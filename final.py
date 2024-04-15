@@ -47,8 +47,9 @@ if __name__ == "__main__":
     # arm.exec_gripper_cmd(0.04, 80)
     # observation
     static_grabber.moveTo( [-0.20638,  0.03282, -0.21015, -1.71503 , 0.00695,  1.74713,  0.36776])
-    #detect static blocks
+    #detect static blocks: sorted poses in world frame nx4x4
     H_Sorted_1 = static_grabber.blockDetect()
+    # ee's supposed pose
     H_Sorted = []
     for (pose) in H_Sorted_1:
         pose = static_grabber.blockPose(pose)
@@ -60,6 +61,7 @@ if __name__ == "__main__":
         q, rollout, success, message = ik.inverse( pose, arm.get_positions(), "J_pseudo", 0.5)
         jointPositions, T0e = fk.forward(q)
         static_grabber.moveTo(q)
+        # move down to grasp
         pose[2][3] -= 0.1
         q1, rollout, success, message = ik.inverse( pose, q, "J_pseudo", 0.5)
         static_grabber.moveTo(q1)

@@ -37,13 +37,19 @@ class StaticGrabber():
       self.arm.safe_move_to_position(q)
 
    def blockDetect(self):
+      """
+      Detect blocks and sort them according to there distance to world frame origin.
+      return: sorted poses in world frame nx4x4
+      """
+      # (name, H_camera_block)
       staticBlocks = self.detector.get_detections()
       H_ee_camera = self.detector.get_H_ee_camera()
       _,H = self.fk.forward(self.arm.get_positions())
       H_camera2world = H @ H_ee_camera 
-      H_End = []
-      H_rank = []
+      H_End = [] # poses in world frame
+      H_rank = [] # sorted displacement
       for (_, pose) in staticBlocks:
+         # block pose in world
          current = H_camera2world @ pose
          H_End.append(current)
          displacement = np.linalg.norm(current[:3,3])
@@ -58,6 +64,9 @@ class StaticGrabber():
       return H_Sorted
 
    def blockPose(self,H):
+      """
+      :param H: block pose 4x4
+      """
       axis = []
       for i in range(3):
          test = H[0][i]*H[1][i]
