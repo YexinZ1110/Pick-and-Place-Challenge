@@ -32,7 +32,9 @@ if __name__ == "__main__":
     # start_position = np.array(origin_state)
     # print("start_position:",start_position)
     # arm.safe_move_to_position(start_position) # on your mark!
-
+    start_position = np.array([-0.01779206, -0.76012354,  0.01978261, -2.34205014, 0.02984053, 1.54119353+pi/2, 0.75344866])
+    arm.safe_move_to_position(start_position) # on your mark!
+    arm.open_gripper()
     print("\n****************")
     if team == 'blue':
         print("** BLUE TEAM  **")
@@ -47,7 +49,8 @@ if __name__ == "__main__":
     static_grabber = StaticGrabber(detector, arm, team, ik, fk)
     # observation
     # T0e=np.array([[1,0,0,0.52],[0,-1,0,0.2],[0,0,-1,0.47],[0,0,0,1]])
-    static_standy = [0.14073182017042138 , -0.016202042086755374 , 0.22430339736949562 , -1.722431588772413 , 0.003637551798808322 , 1.706634383411021 , 1.1499123550701502]
+    # static_standy = [0.14073182017042138 , -0.016202042086755374 , 0.22430339736949562 , -1.722431588772413 , 0.003637551798808322 , 1.706634383411021 , 1.1499123550701502]
+    static_standy=[ 0.20030833776641954 , 0.059256771640907174 , 0.17570900006170106 , -1.3694812469257056 , -0.010458889457973086 , 1.427835575521786 , 1.1596232927188619 ]
     static_grabber.moveTo( static_standy)
     #detect static blocks: sorted poses in world frame nx4x4
     H_Sorted = static_grabber.blockDetect()
