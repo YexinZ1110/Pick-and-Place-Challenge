@@ -64,13 +64,17 @@ def print_q(q):
 
 # black center
 # pickup location of first block
-first_block=[ 3.59927194e-02, -1.26240268e-03,  1.97398241e-01, -2.35900199e+00,
-  3.51082039e-04,  2.35777170e+00,  2.89730026e+00]
-T0e=fk_cal(first_block)
-# print(T0e)
-T0e=np.array([[1,0,0,0.57],[0,-1,0,-0.18],[0,0,-1,0.225],[0,0,0,1]])
-q=ik_cal(T0e,first_block,0.5)
-# print_q(q)
+# first_block=[ 3.59927194e-02, -1.26240268e-03,  1.97398241e-01, -2.35900199e+00,
+#   3.51082039e-04,  2.35777170e+00,  2.89730026e+00]
+# T0e=fk_cal(first_block)
+# T0e=np.array([[1,0,0,0.57],[0,-1,0,-0.18],[0,0,-1,0.25],[0,0,0,1]])
+# q=ik_cal(T0e,first_block,0.5)
 
-# # blue desk 1st position
-main(q)
+# # # blue desk 1st position
+# main(q)
+static_stand = [0.14073182017042138 , -0.016202042086755374 , 0.22430339736949562 , -1.722431588772413 , 0.003637551798808322 , 1.706634383411021 , 1.1499123550701502]
+T0e=fk_cal(static_stand)
+print(T0e)
+T0e[2][3]=T0e[2][3]+0.1
+q=ik_cal(T0e,static_stand,0.5)
+print_q(q)
