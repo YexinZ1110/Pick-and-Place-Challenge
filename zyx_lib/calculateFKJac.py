@@ -63,16 +63,14 @@ class FK_Jac():
         self.T07=self.T06@T67
         jointPositions[6,:]=(self.T07@self.t7)[0:3,3]
 
-        self.t8=self.trans(0,0.1,0.054)
-        jointPositions[7,:]=(self.T07@self.t7@self.t8)[0:3,3]
-
-        self.t9=self.trans(0,-0.1,0.054)
-        jointPositions[8,:]=(self.T07@self.t7@self.t9)[0:3,3]
-
         self.T0e=self.T07@T7e
         jointPositions[9,:]=self.T0e[0:3,3]
-        # Your code ends here
 
+        self.t8=self.trans(0,0.1,-0.105)
+        jointPositions[7,:]=(self.T0e@self.t8)[0:3,3]
+
+        self.t9=self.trans(0,-0.1,-0.105)
+        jointPositions[8,:]=(self.T0e@self.t9)[0:3,3]
     
         self.T08=self.T07
         self.T09=self.T07
@@ -119,6 +117,7 @@ class FK_Jac():
         axis_of_rotation_list=np.vstack((self.T01[:3,2],self.T02[:3,2],
                                          self.T03[:3,2],self.T04[:3,2],
                                          self.T05[:3,2],self.T06[:3,2],
+                                         self.T07[:3,2],self.T07[:3,2],
                                          self.T07[:3,2]))
         return axis_of_rotation_list.T
 
@@ -136,12 +135,12 @@ class FK_Jac():
         return()
     
 if __name__ == "__main__":
-
+    np.set_printoptions(suppress=True,precision=5)
     fk = FK_Jac()
 
     # matches figure in the handout
     q = np.array([0,0,0,-pi/2,0,pi/2,pi/4])
-
+    q=np.array([0,-1,0,-2,0,1.57,0])
     joint_positions, T0e = fk.forward_expanded(q)
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
