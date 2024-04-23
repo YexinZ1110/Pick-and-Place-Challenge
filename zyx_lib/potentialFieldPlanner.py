@@ -340,7 +340,7 @@ if __name__ == "__main__":
     planner = PotentialFieldPlanner(tol=1e-2, max_steps=700, min_step_size=1e-5)
     
     # inputs 
-    map_struct = loadmap("maps/map3.txt")
+    map_struct = loadmap("maps/map1.txt")
     start = np.array([0,-1,0,-2,0,1.57,0])
     goal =  np.array([-1.2, 1.57 , 1.57, -2.07, -1.57, 1.57, 0.7])
     
