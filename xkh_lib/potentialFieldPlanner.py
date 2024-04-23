@@ -5,6 +5,7 @@ from copy import deepcopy
 from lib.calculateFKJac import FK_Jac
 from lib.detectCollision import detectCollision
 from lib.loadmap import loadmap
+from lib.calcJacobian import calcJacobian
 
 
 class PotentialFieldPlanner:
@@ -91,13 +92,13 @@ class PotentialFieldPlanner:
         """
 
         ## STUDENT CODE STARTS HERE
-        rep_f = np.zeros((3, 1))
+        rep_f = np.zeros((3, 1)) 
         d_critical = 0.2 # distance threshold
         gain = 5.0 # gain
 
         d, unitvec = PotentialFieldPlanner.dist_point2box(current.T, obstacle)
-        if d[0] < d_critical:
-            rep_f = -gain * (1.0/d[0] - 1.0/d_critical) * (1.0/(d[0]**2)) * unitvec.reshape(3, 1)
+        if d < d_critical:
+            rep_f = -gain * (1.0 / d - 1.0 / d_critical) * (1.0 / (d ** 2)) * unitvec
         ## END STUDENT CODE
 
         # print('rep_f', rep_f)
@@ -202,22 +203,40 @@ class PotentialFieldPlanner:
         joint_torques = np.zeros((1, 7)) 
 
         joint_positions, T0e = PotentialFieldPlanner.fk.forward_expanded(q)
+        # print(T0e.shape)
         z0 = T0e[:, :3, 2] # 10x3
 
         for i in range(7): # force on last 6 joints and the left virtual joint
             jac_v_temp = np.zeros((3, 7))
             for j in range(i+1):
-                jac_v_temp[:, j] = np.cross(z0[j+1], joint_positions[i+1]-joint_positions[j])
+                jac_v_temp[:, j] = np.cross(z0[j], joint_positions[i+1]-joint_positions[j])
+                # print('z0[j]\n', z0[j])
+                # print('arm\n', joint_positions[i+1]-joint_positions[j])
             joint_torques += jac_v_temp.T @ joint_forces[:, i]
+            # print('joint_force\n', joint_forces[:, i])
+            print('joint_torques\n', joint_torques)
+            # print('jac_v_temp\n', jac_v_temp)
+
         for i in range(7, 9): # force on the right virtual joint and the end effector
             jac_v_temp = np.zeros((3, 7))
             for j in range(7):
-                jac_v_temp[:, j] = np.cross(z0[j+1], joint_positions[i+1]-joint_positions[j])
+                jac_v_temp[:, j] = np.cross(z0[j], joint_positions[i+1]-joint_positions[j])
+                # print('z0[j]\n', z0[j])
+                # print('arm\n', joint_positions[i+1]-joint_positions[j])
             joint_torques += jac_v_temp.T @ joint_forces[:, i]
+            print('joint_torques\n', joint_torques)
+            # print('jac_v_temp\n', jac_v_temp)
 
         ## END STUDENT CODE
 
-        return joint_torques
+        # joint_torques = np.zeros((1, 7)) 
+        # J = calcJacobian(q)
+        
+        # for i in range(7):
+        # 	tt = J.T[:(i+1),:3]@joint_forces[:,i]
+        # 	joint_torques[0,:(i+1)] += tt.T
+
+        # return joint_torques
 
     @staticmethod
     def q_distance(target, current):
@@ -263,16 +282,19 @@ class PotentialFieldPlanner:
 
         ## STUDENT CODE STARTS HERE
         dq = np.zeros((1, 7))
-        gain = np.ones((1, 7)) * 0.1
+        gain = np.ones((1, 7)) * 0.005
+        # gain = np.ones((1, 7))
         
         joint_positions_current, _ = PotentialFieldPlanner.fk.forward_expanded(q)
+        # print('q\n', q)
         joint_positions_target, _ = PotentialFieldPlanner.fk.forward_expanded(target) # 10x3
         joint_forces = PotentialFieldPlanner.compute_forces(joint_positions_target[1:].T, map_struct.obstacles, joint_positions_current[1:].T) # 3x9
-        print('joint_forces', joint_forces)
-        # print('joint_positions_current', joint_positions_current[1:].T)
-        # print('joint_positions_target', joint_positions_target[1:].T)
+        # print('joint_forces\n', joint_forces)
+        # print('joint_positions_current\n', joint_positions_current[1:].T)
+        # print('joint_positions_target\n', joint_positions_target[1:].T)
         joint_torques = PotentialFieldPlanner.compute_torques(joint_forces, q) # 1x7
-        print('joint_torques', joint_torques)
+        # print('joint_torques\n', joint_torques)
+        joint_torques /= np.linalg.norm(joint_torques)
         dq = joint_torques * gain
         ## END STUDENT CODE
 
@@ -301,16 +323,22 @@ class PotentialFieldPlanner:
         q_path = np.array([]).reshape(0,7)
         q_path = np.vstack((q_path, start))
 
+        iter = 0
         while True:
 
             ## STUDENT CODE STARTS HERE
             
             # The following comments are hints to help you to implement the planner
             # You don't necessarily have to follow these steps to complete your code 
-            
+
+            if iter > self.max_steps: 
+                print('max steps reached')
+                break
+            iter += 1
+
             # Compute gradient 
             # TODO: this is how to change your joint angles 
-            dp = PotentialFieldPlanner.compute_gradient(start, goal, map_struct)
+            dq = PotentialFieldPlanner.compute_gradient(start, goal, map_struct)
 
             # Termination Conditions
             threshold = 1e-3
@@ -319,24 +347,24 @@ class PotentialFieldPlanner:
                 break # exit the while loop if conditions are met!
 
             # check if exceed joint limits
-            if (start + dp < PotentialFieldPlanner.lower).any() or (start + dp > PotentialFieldPlanner.upper).any():
+            if (start + dq < PotentialFieldPlanner.lower).any() or (start + dq > PotentialFieldPlanner.upper).any():
                 print('exceed joint limits')
                 # dp = np.clip(dp, PotentialFieldPlanner.lower - start, PotentialFieldPlanner.upper - start)
-                print('dp', dp)
-                print('p', start + dp)
+                print('dq', dq)
+                print('q', start + dq)
                 print('lower', PotentialFieldPlanner.lower)
                 print('upper', PotentialFieldPlanner.upper)
-                print('joint low', (start + dp < PotentialFieldPlanner.lower))
-                print('joint high', (start + dp > PotentialFieldPlanner.upper))
+                print('joint low', (start + dq < PotentialFieldPlanner.lower))
+                print('joint high', (start + dq > PotentialFieldPlanner.upper))
                 break
 
             # YOU NEED TO CHECK FOR COLLISIONS WITH OBSTACLES
             # TODO: Figure out how to use the provided function 
-            def detectCollision_helper(dp):
+            def detectCollision_helper(dq):
                 res = True
 
                 for i in range(map_struct.obstacles.shape[0]):
-                    next_joint_positions, _ = PotentialFieldPlanner.fk.forward_expanded(start + dp)
+                    next_joint_positions, _ = PotentialFieldPlanner.fk.forward_expanded(start + dq)
                     linept1 = np.zeros((9, 3))
                     linept2 = np.zeros((9, 3))
 
@@ -358,21 +386,21 @@ class PotentialFieldPlanner:
                     res = res and np.array(detectCollision(linept1, linept2, map_struct.obstacles[i]), dtype=bool).any()
             
                 return res
-            if detectCollision_helper(dp):
+            if detectCollision_helper(dq):
                 print('collision')
                 break
 
             # YOU MAY NEED TO DEAL WITH LOCAL MINIMA HERE
             # TODO: when detect a local minima, implement a random walk
             local_minima_threshold = 1e-3
-            if np.linalg.norm(dp) < local_minima_threshold:
+            if np.linalg.norm(dq) < local_minima_threshold:
                 print('local minima')
-                dp = np.random.rand(1, 7) * 0.1
-                while detectCollision_helper(dp):
-                    dp = np.random.rand(1, 7) * 0.1
+                dq = np.random.rand(1, 7) * 0.1
+                while detectCollision_helper(dq):
+                    dq = np.random.rand(1, 7) * 0.1
 
-            print('dp', dp)
-            start = start + dp
+            print('dq', dq)
+            start = start + dq
             q_path = np.vstack((q_path, start))
         q_path = np.vstack((q_path, goal))
             ## END STUDENT CODE
