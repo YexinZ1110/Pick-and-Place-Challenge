@@ -34,7 +34,7 @@ class PotentialFieldPlanner:
         # solver parameters
         self.fk=FK_Jac()
         self.tol = tol
-        self.max_steps = max_steps
+        self.max_steps = 700
         self.min_step_size = min_step_size
 
 
@@ -193,33 +193,40 @@ class PotentialFieldPlanner:
         OUTPUTS:
         joint_torques - 1x9 numpy array representing the torques on each joint 
         """
-        joint_torques = np.zeros((7,1)) 
-        for i in range(9):
-            Jv=PotentialFieldPlanner.calcJacobian_n(q,i+1) #(3,7)
-            torque=Jv.T@joint_forces[:, i].reshape(3,1) # (7,3)@(3,1)
+        joint_torques = np.zeros((9,1)) 
+        for i in range(1,10):
+            Jv=PotentialFieldPlanner.calcJacobian_n(q,i) #(3,9)
+            # print(i,"\n",Jv)
+            torque=Jv.T@joint_forces[:, i-1].reshape(3,1) # (9,3)@(3,1)
             joint_torques +=torque #(7,1)
         return joint_torques.T
     
     @staticmethod
     def calcJacobian_n(q_in,n):
         """
-        Calculate the full Jacobian of the end effector in a given configuration
+        Calculate the full Jacobian of the n joint in a given configuration
         :param q_in: 1 x 7 configuration vector (of joint angles) [q1,q2,q3,q4,q5,q6,q7]
         :return: J - 6 x 7 matrix representing the Jacobian, where the first three
         rows correspond to the linear velocity and the last three rows correspond to
         the angular velocity, expressed in world frame coordinates
         """
-        joint_num=7
+        joint_num=10
         fk = FK_Jac()
-        rot_axis=fk.get_axis_of_rotation(q_in).T # (7,3)
+        rot_axis=fk.get_axis_of_rotation(q_in).T # (9,3)
         joints_pos,_=fk.forward_expanded(q_in) # (10,3)
         o0e=joints_pos[n] # (3,)
-        o=o0e-joints_pos[:n,:] # (n,3)
-        Jv=np.zeros((3,joint_num))
-        for i in range(joint_num):
+        joints_pos[7]=joints_pos[6]
+        joints_pos[8]=joints_pos[6]
+
+        o=o0e-joints_pos # (n,3)
+
+        Jv=np.zeros((3,joint_num-1))
+        for i in range(1,joint_num):
             if i<n:
-                Jv[:,i]=np.cross(rot_axis[i],o[i])
-        return Jv # (3,7)
+                Jv[:,i-1]=np.cross(rot_axis[i-1],o[i-1])
+            else:
+                break
+        return Jv # (3,9)
 
     @staticmethod
     def q_distance(target, current):
@@ -266,7 +273,7 @@ class PotentialFieldPlanner:
         target=target_joint.T[:,1:] #(3,9)
         obstacle=map_struct.obstacles #(n,6)
         forces=PotentialFieldPlanner.compute_forces(target,obstacle,current)
-        torques=PotentialFieldPlanner.compute_torques(forces,q) # (1,7)
+        torques=PotentialFieldPlanner.compute_torques(forces,q)[0,:7] # (1,7)
         dq=torques/np.linalg.norm(torques)
         print("dq:",dq)
         return dq
@@ -347,4 +354,5 @@ if __name__ == "__main__":
         print('iteration:',i,' q =', q_path[i, :], ' error={error}'.format(error=error))
 
     print("q path: ", q_path)
+
 
