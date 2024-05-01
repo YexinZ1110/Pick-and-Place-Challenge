@@ -22,32 +22,32 @@ class StaticGrabber():
       self.fk = fk
       self.count = 0
       # self.H_ee_camera = detector.get_H_ee_camera()
-      self.set_point = np.array([
-                              [ 0.20149,  0.16689,  0.06193, -2.03366, -0.01272,  2.2002,   1.05545],
-                              [ 0.19154,  0.09093,  0.07196, -1.92797, -0.00724,  2.01865,  1.05174] ,
-                              [ 0.18033,  0.05624,  0.08327, -1.76436, -0.00481,  1.8204,   1.05005] ,
-                              [ 0.17466,  0.06443,  0.09028, -1.59918,-0.00583,  1.66357,  1.05069] ,
-                              [ 0.1574,  0.0591,  0.1067, -1.7201, -0.0064,  1.7789,  1.0507] ,
-                              [ 0.1628,  0.0705,  0.1026, -1.5781, -0.0072,  1.6482,  1.0512] ,
-                              [ 0.1799,  0.107 ,  0.0881, -1.4011, -0.0094,  1.5076,  1.0524] ,
-                              [ 0.2123,  0.1799,  0.058 , -1.1669, -0.0106,  1.3465,  1.0525] ,
-                                ])
-   # [ 0.20149  0.16689  0.06193 -2.03366 -0.01272  2.2002   1.05545]
-   # [ 0.19154  0.09093  0.07196 -1.92797 -0.00724  2.01865  1.05174]
-   # [ 0.18033  0.05624  0.08327 -1.76436 -0.00481  1.8204   1.05005]
-   # [ 0.17466  0.06443  0.09028 -1.59918 -0.00583  1.66357  1.05069]
+      self.set_point = np.array([[ 0.19025 , 0.31056 , -0.03039 , -1.90188 , 0.01161 , 2.21227 , 0.93976 ],
+[ 0.18041 , 0.24891 , -0.01995 , -1.84123 , 0.00568 , 2.09009 , 0.94366 ],
+[ 0.1654 , 0.20995 , -0.00371 , -1.76426 , 0.00086 , 1.97421 , 0.94684 ],
+[ 0.15387 , 0.1888 , 0.00894 , -1.66473 , -0.00173 , 1.85352 , 0.94854 ],
+[ 0.1493 , 0.18752 , 0.01425 , -1.53908 , -0.00267 , 1.72658 , 0.94911 ],
+[ 0.15224 , 0.21016 , 0.01142 , -1.37971 , -0.00237 , 1.58986 , 0.94885 ],
+[ 0.1633 , 0.26678 , -0.00166 , -1.16767 , 0.00046 , 1.43445 , 0.94716 ],
+[ 0.17898 , 0.39971 , -0.02792 , -0.82469 , 0.01157 , 1.22429 , 0.94259 ]])
+
    def moveTo(self,q):
       self.arm.safe_move_to_position(q)
 
    def blockDetect(self):
+      """
+      Detect blocks and sort them according to there distance to world frame origin.
+      return: sorted poses in world frame nx4x4
+      """
+      # (name, H_camera_block)
       staticBlocks = self.detector.get_detections()
       H_ee_camera = self.detector.get_H_ee_camera()
-      print("H_block is \n",staticBlocks)
       _,H = self.fk.forward(self.arm.get_positions())
       H_camera2world = H @ H_ee_camera 
-      H_End = []
-      H_rank = []
+      H_End = [] # poses in world frame
+      H_rank = [] # sorted displacement
       for (_, pose) in staticBlocks:
+         # block pose in world
          current = H_camera2world @ pose
          H_End.append(current)
          displacement = np.linalg.norm(current[:3,3])
@@ -62,6 +62,9 @@ class StaticGrabber():
       return H_Sorted
 
    def blockPose(self,H):
+      """
+      :param H: block pose 4x4
+      """
       axis = []
       for i in range(3):
          test = H[0][i]*H[1][i]
@@ -69,14 +72,10 @@ class StaticGrabber():
             continue
          else:
             axis.append([H[0][i],H[1][i],H[2][i]])
-      targetAxis = axis[0]
-      if np.abs(axis[1][1]) < np.abs(axis[0][1]):
-         targetAxis = axis[1]
+      targetAxis = axis[1]
+      if axis[0][1] < axis[1][1]:
+         targetAxis = axis[0]
       x = targetAxis
-      if targetAxis[0] < 0 :
-         x[0] = x[0] * -1
-         x[1] = x[1] * -1
-         x[2] = x[2] * -1
       z = np.array([0,0,-1])
       y = np.cross(z,x)
 

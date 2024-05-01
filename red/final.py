@@ -45,16 +45,27 @@ if __name__ == "__main__":
 
     # STUDENT CODE HERE
     # arm.exec_gripper_cmd(0.04, 80)
-    # observation
+
+    # dynamic observation
+    static_grabber.moveTo( [ 0.22754 , 0.04997 , 0.1918 , -1.56587 , -0.00954 , 1.61492 , 1.20493 ])
+    H_Sorted_dynamic_1 = static_grabber.blockDetect()
+    H_Sorted_dynamic = []
+    for (pose) in H_Sorted_dynamic_1:
+        pose = static_grabber.blockPose(pose)
+        H_Sorted_dynamic.append(pose)
+        # seed = eepose for hot start
+    print("H_Sorted_dynamic:\n",H_Sorted_dynamic)
+    # static observation
     static_grabber.moveTo( [-0.20638,  0.03282, -0.21015, -1.71503 , 0.00695,  1.74713,  0.36776])
-    #detect static blocks: sorted poses in world frame nx4x4
     H_Sorted_1 = static_grabber.blockDetect()
-    # ee's supposed pose
     H_Sorted = []
     for (pose) in H_Sorted_1:
         pose = static_grabber.blockPose(pose)
         H_Sorted.append(pose)
         # seed = eepose for hot start
+    print("H_Sorted:\n",H_Sorted)
+
+    # static grabber
     arm.open_gripper()
     for (pose) in H_Sorted:
         pose[2][3] += 0.1
@@ -67,9 +78,21 @@ if __name__ == "__main__":
         static_grabber.moveTo(q1)
         static_grabber.grab()
         
-        
+    # dynamic grabber
+    arm.open_gripper()
+    for (pose) in H_Sorted_dynamic:
+        pose[2][3] += 0.1
+        q, rollout, success, message = ik.inverse( pose, arm.get_positions(), "J_pseudo", 0.5)
+        jointPositions, T0e = fk.forward(q)
+        static_grabber.moveTo(q)
+        # move down to grasp
+        pose[2][3] -= 0.1
+        q1, rollout, success, message = ik.inverse( pose, q, "J_pseudo", 0.5)
+        static_grabber.moveTo(q1)
+        static_grabber.grab()
 
     # grabber move to above block
     #for (pose) in H_Sorted:
         
         
+
