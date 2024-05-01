@@ -1,80 +1,115 @@
-    
-from lib.calculateFK import FK
-from lib.IK_position_null import IK
+import sys
 import numpy as np
+from copy import deepcopy
+from math import pi
 
-def ik_cal(T0e, seed,alpha):
-    ik = IK()
-    q_t, rollout_pseudo, success_pseudo, message_pseudo = ik.inverse(T0e, seed, method='J_pseudo', alpha=.5)
-    print(message_pseudo)
-    return q_t
+import rospy
+# Common interfaces for interacting with both the simulation and real environments!
+from core.interfaces import ArmController
+from core.interfaces import ObjectDetector
 
-def fk_cal(q):
-    fk = FK()
-    _, T0e = fk.forward(q)
-    return T0e
+# for timing that is consistent with simulation or real time as appropriate
+from core.utils import time_in_seconds
+from lib.IK_position_null import IK
+from lib.calculateFK import FK
 
-def q_stack_calc(q,h,n):
-    """
-    :param q: 1x7 vector, configuration of seed 
-    :param h: int, stack height
-    :param n: int, stack number
-    :return qs: stack configuration
-    """
+class StaticGrabber():
+   def __init__(self, detector, arm, team, ik, fk):
+      self.detector = detector
+      self.arm = arm
+      self.team = team
+      self.ik = ik
+      self.fk = fk
+      self.count = 0
+      self.H_ee_camera = detector.get_H_ee_camera()
 
-    ik = IK()
-    fk = FK()
+      self.set_point = np.array([[ -0.25713726502200174 , 0.09504443741635296 , -0.2590920067873705 , -2.1524953148900834 , 0.031108568237637652 , 2.2441529661705686 , 0.25088750289490785 ],
+[ -0.2544872503569543 , 0.03297907778035211 , -0.25999661311000327 , -2.091158049869565 , 0.00995741737823692 , 2.1230106688163017 , 0.2658299347085468 ],
+[ -0.25557210483248627 , -0.010663835630216634 , -0.2558842889840574 , -2.010451545469407 , -0.0029677073497847394 , 2.000136553089767 , 0.27519508743284854 ],
+[ -0.2560165764353278 , -0.03523925082391412 , -0.25245198600129726 , -1.9099224657171938 , -0.009225476389465245 , 1.8757904478008844 , 0.279854126356452 ],
+[ -0.2554511897671769 , -0.04008324102737134 , -0.25140184253113884 , -1.7880119687474252 , -0.010128798919366843 , 1.749181835425805 , 0.2805399782459023 ],
+[ -0.255111398907641 , -0.023655717764447085 , -0.2532722850990789 , -1.6411319026440718 , -0.005933021324009739 , 1.6182330760728487 , 0.2773676807273076 ],
+[ -0.2584171328373537 , 0.017845137845794348 , -0.25763775286997254 , -1.4614196642052477 , 0.004566669142845643 , 1.478680205217465 , 0.269806595791745 ],
+[ -0.2749487806478152 , 0.09445185420194438 , -0.2608313396274776 , -1.2294101471857872 , 0.02510533106472033 , 1.3207641507036083 , 0.2569461831460255 ],
+         
+                          # [ -0.14144917546923008 , 0.13106221756602918 , -0.17351063478712656 , -1.821340439888635 , 0.02429279454467291 , 1.950358497331739 , 0.4628988992732331 ],
+      # [ -0.14483622081232564 , 0.11320207991998145 , -0.17079061018542888 , -1.7034408475382845 , 0.019786655519115806 , 1.8149670991461944 , 0.4660635899711677 ]        
+  
+   ])
+   def moveTo(self,q):
+      self.arm.safe_move_to_position(q)
 
-    q_stack=[q]
-    _, T0e = fk.forward(q)
-    seed=q
-    print_q(q)
-    for i in range(n):
-        T0e[2][3]=T0e[2][3]+h
-        q_t, rollout_pseudo, success_pseudo, message_pseudo = ik.inverse(T0e, np.array(seed), method='J_pseudo', alpha=.5)
-        q_stack.append(q_t)
-        print_q(q_t)
-        seed=q_t
+   def blockDetect(self):
+      """
+      Detect blocks and sort them according to there distance to world frame origin.
+      return: sorted poses in world frame nx4x4
+      """
+      # (name, H_camera_block)
+      staticBlocks = self.detector.get_detections()
+      H_ee_camera = self.detector.get_H_ee_camera()
+      _,H = self.fk.forward(self.arm.get_positions())
+      H_camera2world = H @ H_ee_camera 
+      H_End = [] # poses in world frame
+      H_rank = [] # sorted displacement
+      for (_, pose) in staticBlocks:
+         # block pose in world
+         current = H_camera2world @ pose
+         H_End.append(current)
+         displacement = np.linalg.norm(current[:3,3])
+         H_rank.append(displacement)
+      sorted = np.argsort(H_rank)
+      H_Sorted = []
+      for i in range(len(H_End)):
+         H_Sorted.append(H_End[sorted[i]])
 
-    return np.array(q_stack)
+      print("There are ",len(H_End), " blocks detected! \n")
+
+      return H_Sorted
+
+   def blockPose(self,H):
+      """
+      :param H: block pose 4x4
+      """
+      axis = []
+      for i in range(3):
+         test = H[0][i]*H[1][i]
+         if test < 0.002 and test > -0.002 :
+            continue
+         else:
+            axis.append([H[0][i],H[1][i],H[2][i]])
+      targetAxis = axis[0]
+      if np.abs(axis[1][1]) < np.abs(axis[0][1]):
+         targetAxis = axis[1]
+      x = targetAxis
+      if targetAxis[0] < 0 :
+         x[0] = x[0] * -1
+         x[1] = x[1] * -1
+         x[2] = x[2] * -1
+      z = np.array([0,0,-1])
+      y = np.cross(z,x)
+
+      H_block = np.eye(4)
+      H_block[:3,3] = H[:3,3]
+      H_block[:3,0] = x
+      H_block[:3,1] = y
+      H_block[:3,2] = z
+      # print("H_block is \n",H_block)
+      return H_block
 
 
-def main(first_block_stack):
-    h=0.055
-    n=3
-
-    q = np.array(first_block_stack)
-    q_stack=q_stack_calc(q,h,n)
-    # print("Stack as this configuration:\n")
-
-def print_q(q):
-    print("[",q[0],",",q[1],",",q[2],",",q[3],",",q[4],",",q[5],",",q[6],"]")
+   def moveUp(self):
+      q = self.arm.get_positions()
+      q[1] -= 0.3
+      q[3] += 0.3
+      q[5] -= 0.3
+      self.arm.safe_move_to_position(q)
 
 
-
-## blue original pos
-# start=np.array([8.98141289e-06, -7.85005888e-01,-2.81193385e-05, -2.35601398e+00,-8.11740800e-06,  1.57001310e+00,  7.85002585e-01])
-# print("origin state: ",fk_cal(start))
-# T0e=np.array([[1,0,0,0.52],[0,-1,0,0.2],[0,0,-1,0.47],[0,0,0,1]])
-# q=ik_cal(T0e,start,0.5)
-# print_q(q)
-
-
-## static_standy = [0.14073182017042138 , -0.016202042086755374 , 0.22430339736949562 , -1.722431588772413 , 0.003637551798808322 , 1.706634383411021 , 1.1499123550701502]
-
-# black center
-# pickup location of first block
-# first_block=[ 3.59927194e-02, -1.26240268e-03,  1.97398241e-01, -2.35900199e+00,
-#   3.51082039e-04,  2.35777170e+00,  2.89730026e+00]
-# T0e=fk_cal(first_block)
-# T0e=np.array([[1,0,0,0.57],[0,-1,0,-0.18],[0,0,-1,0.25],[0,0,0,1]])
-# q=ik_cal(T0e,first_block,0.5)
-
-# # # blue desk 1st position
-# main(q)
-static_stand = [0.14073182017042138 , -0.016202042086755374 , 0.22430339736949562 , -1.722431588772413 , 0.003637551798808322 , 1.706634383411021 , 1.1499123550701502]
-T0e=fk_cal(static_stand)
-print(T0e)
-T0e[2][3]=T0e[2][3]+0.1
-q=ik_cal(T0e,static_stand,0.5)
-print_q(q)
+   def grab(self):
+      
+      self.arm.exec_gripper_cmd(0.04, 80)
+      self.moveUp()
+      self.arm.safe_move_to_position(self.set_point[self.count,:])
+      self.count += 1
+      self.arm.open_gripper()
+      self.moveUp()
